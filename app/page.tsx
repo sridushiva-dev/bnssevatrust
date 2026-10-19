@@ -29,8 +29,8 @@ export default function HomePage() {
           </div>
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <Button className="w-full" disabled>
-            Section 11 (85%) tracker — Phase 2
+          <Button className="w-full" asChild>
+            <a href="/accounting">Open FAS & Section 11 meter</a>
           </Button>
           <Button variant="outline" className="w-full" disabled>
             Cheque clearance queue — Phase 3
@@ -39,8 +39,11 @@ export default function HomePage() {
       </section>
 
       <section className="rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-        Phase 1 complete: Next.js shell, Prisma schema, canonical chart of
-        accounts seed, FY utilities, and voucher sequencing are in place. Connect
+        Phase 2 adds the double-entry engine, statutory reports, and{" "}
+        <a href="/accounting/ledgers" className="text-primary underline">
+          ledger drill-down
+        </a>
+        . Connect
         PostgreSQL via <code className="text-foreground">DATABASE_URL</code> and
         run <code className="text-foreground">npm run db:push</code> then{" "}
         <code className="text-foreground">npm run db:seed</code>.
