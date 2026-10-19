@@ -6,6 +6,8 @@ import { PassThrough } from "node:stream";
 import { prisma } from "@/lib/prisma";
 
 import { donationWhere, expenseWhere } from "./filters";
+import type { Archiver } from "archiver";
+
 import type { ExportFilter } from "./types";
 import { createArchiver } from "./zip";
 
@@ -23,6 +25,25 @@ async function resolvePublicFile(fileUrl: string): Promise<string | null> {
     return diskPath;
   } catch {
     return null;
+  }
+}
+
+async function appendEvidenceFile(
+  archive: Archiver,
+  fileUrl: string,
+  archiveName: string,
+): Promise<void> {
+  if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+    const response = await fetch(fileUrl);
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      archive.append(buffer, { name: archiveName });
+    }
+    return;
+  }
+  const disk = await resolvePublicFile(fileUrl);
+  if (disk) {
+    archive.file(disk, { name: archiveName });
   }
 }
 
@@ -54,32 +75,29 @@ export async function buildEvidenceZipBuffer(filter: ExportFilter): Promise<Buff
   for (const donation of donations) {
     const folder = `${monthFolder(donation.createdAt)}/Receipts`;
     if (donation.receiptPdfUrl) {
-      const disk = await resolvePublicFile(donation.receiptPdfUrl);
-      if (disk) {
-        archive.file(disk, {
-          name: `${folder}/${donation.receiptNumber}.pdf`,
-        });
-      }
+      await appendEvidenceFile(
+        archive,
+        donation.receiptPdfUrl,
+        `${folder}/${donation.receiptNumber}.pdf`,
+      );
     }
     for (const att of donation.attachments) {
-      const disk = await resolvePublicFile(att.fileUrl);
-      if (disk) {
-        archive.file(disk, {
-          name: `${folder}/${donation.receiptNumber}_${att.fileName}`,
-        });
-      }
+      await appendEvidenceFile(
+        archive,
+        att.fileUrl,
+        `${folder}/${donation.receiptNumber}_${att.fileName}`,
+      );
     }
   }
 
   for (const expense of expenses) {
     const folder = `${monthFolder(expense.expenseDate)}/Expenses`;
     for (const att of expense.attachments) {
-      const disk = await resolvePublicFile(att.fileUrl);
-      if (disk) {
-        archive.file(disk, {
-          name: `${folder}/${expense.voucherNumber}_${att.fileName}`,
-        });
-      }
+      await appendEvidenceFile(
+        archive,
+        att.fileUrl,
+        `${folder}/${expense.voucherNumber}_${att.fileName}`,
+      );
     }
   }
 
@@ -148,12 +166,11 @@ export async function buildAuditPackZipBuffer(filter: ExportFilter): Promise<Buf
   for (const expense of expenses) {
     const folder = `${monthFolder(expense.expenseDate)}/Expenses`;
     for (const att of expense.attachments) {
-      const disk = await resolvePublicFile(att.fileUrl);
-      if (disk) {
-        archive.file(disk, {
-          name: `${folder}/${expense.voucherNumber}_${att.fileName}`,
-        });
-      }
+      await appendEvidenceFile(
+        archive,
+        att.fileUrl,
+        `${folder}/${expense.voucherNumber}_${att.fileName}`,
+      );
     }
   }
 

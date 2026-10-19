@@ -1,3 +1,11 @@
+# Bhagavan Naama Sathsangam Seva Trust — Admin & Accounting Portal
+
+## Deploy to Vercel
+
+See **[docs/VERCEL.md](./docs/VERCEL.md)** for Neon/Postgres, S3 env vars, Razorpay webhook URL, and one-time `db:seed` from your machine.
+
+---
+
 # Bhagavan Naama Sathsangam Seva Trust — Cursor Kickoff Bundle
 
 ## 1. What is Inside This Bundle
