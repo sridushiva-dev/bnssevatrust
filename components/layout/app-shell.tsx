@@ -9,6 +9,7 @@ import {
   Landmark,
   LayoutDashboard,
   PieChart,
+  FileDown,
   Users,
 } from "lucide-react";
 
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/donations", label: "Gifts", icon: HandCoins },
   { href: "/expenses", label: "Pay", icon: Banknote },
   { href: "/budgets", label: "Budget", icon: PieChart },
+  { href: "/audit", label: "Audit", icon: FileDown },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -92,7 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur md:hidden"
           aria-label="Primary"
         >
-          <ul className="grid grid-cols-6">
+          <ul className="grid grid-cols-4 sm:grid-cols-7">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
               const active =
                 href === "/" ? pathname === "/" : pathname.startsWith(href);
