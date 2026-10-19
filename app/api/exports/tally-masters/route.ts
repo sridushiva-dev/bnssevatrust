@@ -1,19 +1,12 @@
-import { NextRequest } from "next/server";
-
 import { assertExportAccess } from "@/lib/auth/export-access";
 import { fileDownloadResponse } from "@/lib/exports/http";
 import { generateTallyMastersXml } from "@/lib/exports/tallyXmlGenerator";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     await assertExportAccess();
-    await parseExportFilterFromQuery({
-      fy: request.nextUrl.searchParams.get("fy"),
-      from: request.nextUrl.searchParams.get("from"),
-      to: request.nextUrl.searchParams.get("to"),
-    });
     const file = await generateTallyMastersXml();
     return fileDownloadResponse(file.content, file.fileName, file.mimeType);
   } catch (error) {
