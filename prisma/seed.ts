@@ -295,6 +295,17 @@ async function main() {
     },
   });
 
+  await prisma.user.upsert({
+    where: { email: "auditor.ca@bnst.local" },
+    update: {},
+    create: {
+      name: "Chartered Accountant (Auditor)",
+      email: "auditor.ca@bnst.local",
+      phone: "+919000000002",
+      role: Role.AUDITOR_CA,
+    },
+  });
+
   for (const budget of DEFAULT_BUDGETS) {
     const ledgerId = ledgerByCode[budget.ledgerCode];
     if (!ledgerId) {
