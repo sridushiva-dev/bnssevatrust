@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Banknote,
   HandCoins,
+  Landmark,
   LayoutDashboard,
   PieChart,
   Users,
@@ -14,11 +15,12 @@ import {
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/accounting", label: "Accounts", icon: Landmark },
   { href: "/donors", label: "Donors", icon: Users },
-  { href: "/donations", label: "Donations", icon: HandCoins },
-  { href: "/expenses", label: "Expenses", icon: Banknote },
-  { href: "/budgets", label: "Budgets", icon: PieChart },
+  { href: "/donations", label: "Gifts", icon: HandCoins },
+  { href: "/expenses", label: "Pay", icon: Banknote },
+  { href: "/budgets", label: "Budget", icon: PieChart },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -90,7 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card/95 backdrop-blur md:hidden"
           aria-label="Primary"
         >
-          <ul className="grid grid-cols-5">
+          <ul className="grid grid-cols-6">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
               const active =
                 href === "/" ? pathname === "/" : pathname.startsWith(href);
