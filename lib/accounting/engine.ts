@@ -20,7 +20,13 @@ export type PostJournalEntryInput = {
   narration: string;
   createdById: string;
   lines: JournalLineInput[];
+  /** When already reserved (e.g. donation receipt number), skip sequence increment. */
+  voucherNumber?: string;
+  tx?: PrismaTx;
+  skipAuditLog?: boolean;
 };
+
+type PrismaTx = Prisma.TransactionClient;
 
 export type ReverseJournalEntryInput = {
   originalEntryId: string;
@@ -53,6 +59,45 @@ function normalizeLines(lines: JournalLineInput[]) {
   return normalized;
 }
 
+async function createJournalEntryInTx(
+  tx: PrismaTx,
+  input: PostJournalEntryInput,
+  normalized: ReturnType<typeof normalizeLines>,
+  financialYear: string,
+) {
+  const voucherNumber =
+    input.voucherNumber ??
+    (await generateNextVoucherNumber(financialYear, input.voucherType, tx));
+
+  if (input.voucherNumber) {
+    const clash = await tx.journalEntry.findUnique({
+      where: { voucherNumber: input.voucherNumber },
+    });
+    if (clash) {
+      throw new Error(`Voucher number already used: ${input.voucherNumber}`);
+    }
+  }
+
+  return tx.journalEntry.create({
+    data: {
+      voucherNumber,
+      voucherType: input.voucherType,
+      financialYear,
+      entryDate: input.entryDate,
+      narration: input.narration,
+      createdById: input.createdById,
+      lines: {
+        create: normalized.map((line) => ({
+          ledgerId: line.ledgerId,
+          debit: line.debit.toFixed(2),
+          credit: line.credit.toFixed(2),
+        })),
+      },
+    },
+    include: { lines: true },
+  });
+}
+
 export async function postJournalEntry(
   input: PostJournalEntryInput,
 ): Promise<ActionResult<JournalEntry>> {
@@ -62,7 +107,8 @@ export async function postJournalEntry(
     const lines = normalizeLines(input.lines);
 
     const ledgerIds = [...new Set(lines.map((l) => l.ledgerId))];
-    const ledgers = await prisma.ledgerAccount.findMany({
+    const db = input.tx ?? prisma;
+    const ledgers = await db.ledgerAccount.findMany({
       where: { id: { in: ledgerIds } },
       select: { id: true },
     });
@@ -70,48 +116,29 @@ export async function postJournalEntry(
       return { success: false, error: "One or more ledger accounts were not found" };
     }
 
-    const entry = await prisma.$transaction(
-      async (tx) => {
-        const voucherNumber = await generateNextVoucherNumber(
-          financialYear,
-          input.voucherType,
-          tx,
-        );
+    const runInTx = async (tx: PrismaTx) =>
+      createJournalEntryInTx(tx, input, lines, financialYear);
 
-        return tx.journalEntry.create({
-          data: {
-            voucherNumber,
-            voucherType: input.voucherType,
-            financialYear,
-            entryDate: input.entryDate,
-            narration: input.narration,
-            createdById: input.createdById,
-            lines: {
-              create: lines.map((line) => ({
-                ledgerId: line.ledgerId,
-                debit: line.debit.toFixed(2),
-                credit: line.credit.toFixed(2),
-              })),
-            },
-          },
-          include: { lines: true },
+    const entry = input.tx
+      ? await runInTx(input.tx)
+      : await prisma.$transaction(runInTx, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         });
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
 
-    await prisma.auditLog.create({
-      data: {
-        userId: input.createdById,
-        action: "POST_JOURNAL_ENTRY",
-        entityType: "JournalEntry",
-        entityId: entry.id,
-        metadata: {
-          voucherNumber: entry.voucherNumber,
-          voucherType: entry.voucherType,
+    if (!input.skipAuditLog) {
+      await prisma.auditLog.create({
+        data: {
+          userId: input.createdById,
+          action: "POST_JOURNAL_ENTRY",
+          entityType: "JournalEntry",
+          entityId: entry.id,
+          metadata: {
+            voucherNumber: entry.voucherNumber,
+            voucherType: entry.voucherType,
+          },
         },
-      },
-    });
+      });
+    }
 
     return { success: true, data: entry };
   } catch (error) {
