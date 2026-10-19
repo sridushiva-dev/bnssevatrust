@@ -1,98 +1,90 @@
-# Deploying to Vercel
+# Deploying to Vercel (no local terminal)
 
-The trust portal is a **Next.js 15** app and runs on Vercel with **managed PostgreSQL** and **object storage** (files are not persisted on the serverless filesystem).
+You can create the database on **Neon**, deploy on **Vercel**, and **seed from the browser** at `/setup`.
 
-## Architecture on Vercel
+## Step A — Neon (your current screen)
 
-| Component | Recommendation |
-|-----------|----------------|
-| App hosting | [Vercel](https://vercel.com) (import GitHub repo `sridushiva-dev/bnssevatrust`, branch **`main`**) |
-| Database | [Neon](https://neon.tech) or [Vercel Postgres](https://vercel.com/storage/postgres) (PostgreSQL) |
-| Uploads & receipt PDFs | **S3** (AWS S3, Cloudflare R2, or similar) with `STORAGE_DRIVER=s3` |
-| Payments | Razorpay (test keys first; webhook URL → production domain) |
+1. **Project name:** `BNSS Trust Admin Portal` (or any name) is fine.
+2. **Region:** For India, prefer **AWS Asia Pacific (Mumbai)** if listed; **US East** is OK for testing.
+3. Leave **Postgres** enabled; you can leave **Object storage** off (the app uses S3/R2 via env vars later).
+4. Click **Create project**.
 
-## 1. Create the database
+After creation:
 
-1. Create a Neon project (or Vercel Postgres).
-2. Copy the **pooled** connection string for the app (`?sslmode=require`; Neon also offers a **pooled** URL for serverless).
-3. For `prisma db push` / migrations from your laptop, use the **direct** (non-pooled) URL if Neon separates them.
+1. Open **Dashboard → Connection details**.
+2. Copy two URLs (Neon shows **Pooled** and **Direct**):
+   - **Pooled** → will become `DATABASE_URL` on Vercel (runtime + build).
+   - **Direct** → will become `DIRECT_URL` on Vercel (Prisma schema push).
 
-## 2. Prepare schema & seed (from your Mac, once)
+Append `?sslmode=require` if not already in the string.
 
-```bash
-git clone https://github.com/sridushiva-dev/bnssevatrust.git
-cd bnssevatrust
-git checkout main
-npm install
+## Step B — Vercel project
 
-cp .env.example .env
-# Set DATABASE_URL to your Neon *direct* URL for setup
+1. Go to [vercel.com](https://vercel.com) → **Add New → Project**.
+2. Import GitHub repo **`sridushiva-dev/bnssevatrust`**, branch **`main`**.
+3. Before deploying, open **Environment Variables** and add:
 
-npm run db:push
-npm run db:seed
-```
+| Name | Value |
+|------|--------|
+| `DATABASE_URL` | Neon **pooled** connection string |
+| `DIRECT_URL` | Neon **direct** connection string |
+| `SETUP_SECRET` | A long random password you invent (e.g. 32+ characters) — you will type this once on `/setup` |
+| `STORAGE_DRIVER` | `local` for first UI test only; use `s3` before real uploads (see below) |
 
-Seeding is **not** run automatically on Vercel deploy; run it manually when you create or reset a database.
+Optional later: Razorpay keys, `TALLY_COMPANY_NAME`, S3 variables.
 
-## 3. S3 (required in production)
+4. Click **Deploy**.
 
-On Vercel, set:
+Vercel runs **`vercel-build`** (`prisma db push` then `next build`), which creates tables in Neon. No seed runs at build time.
+
+## Step C — Seed in the browser (no terminal)
+
+1. Open: `https://YOUR-PROJECT.vercel.app/setup`
+2. Paste the same **`SETUP_SECRET`** you set in Vercel.
+3. Click **Initialize database (seed)**.
+4. When it says success, open **Open trust portal** or go to `/`.
+
+If you see “database not reachable”, wait one minute and refresh — first deploy may still be finishing.
+
+## Step D — Connect Neon from Vercel (alternative)
+
+Instead of pasting URLs manually:
+
+1. Vercel project → **Storage** or **Integrations** → **Neon**.
+2. Link the Neon project; Vercel injects `DATABASE_URL` / `DIRECT_URL`.
+3. You still must add **`SETUP_SECRET`** yourself and redeploy if added after first deploy.
+
+## File uploads on Vercel
+
+Serverless disks are ephemeral. For receipts and bills:
 
 ```env
 STORAGE_DRIVER=s3
-S3_BUCKET=your-bucket
+S3_BUCKET=...
 S3_REGION=ap-south-1
 S3_ACCESS_KEY_ID=...
 S3_SECRET_ACCESS_KEY=...
-S3_PUBLIC_BASE_URL=https://your-bucket.s3.ap-south-1.amazonaws.com
+S3_PUBLIC_BASE_URL=https://...
 ```
 
-Ensure the bucket policy or public access matches how you serve `S3_PUBLIC_BASE_URL` (or use CloudFront). Expense bills, corpus letters, and **donation receipt PDFs** are stored here when `STORAGE_DRIVER=s3`.
+**Cloudflare R2** works with the same variables (S3-compatible API).
 
-## 4. Import project on Vercel
+Until S3 is configured, you can browse accounting/donors with `STORAGE_DRIVER=local`, but uploads may not persist across requests.
 
-1. **Add New Project** → import `sridushiva-dev/bnssevatrust`.
-2. Framework preset: **Next.js** (auto-detected).
-3. Build command: `npm run build` (default; `postinstall` runs `prisma generate`).
-4. Add **Environment variables** (Production + Preview as needed):
+## Razorpay webhook (when ready)
 
-| Variable | Required | Notes |
-|----------|----------|--------|
-| `DATABASE_URL` | Yes | Pooled Postgres URL for runtime |
-| `STORAGE_DRIVER` | Yes | `s3` on Vercel |
-| `S3_*` | Yes | See above |
-| `RAZORPAY_KEY_ID` | For UPI/subscriptions | |
-| `RAZORPAY_KEY_SECRET` | For UPI/subscriptions | |
-| `RAZORPAY_WEBHOOK_SECRET` | For webhooks | |
-| `NEXT_PUBLIC_RAZORPAY_KEY_ID` | For client QR | |
-| `TALLY_COMPANY_NAME` | Optional | Tally XML company name |
+`https://YOUR-PROJECT.vercel.app/api/webhooks/razorpay`
 
-5. Deploy.
+## Security
 
-## 5. Razorpay webhook
+- Remove or rotate **`SETUP_SECRET`** after seeding if you prefer (seed is idempotent if users already exist).
+- Add real login before sharing the site publicly.
 
-In Razorpay Dashboard → Webhooks, set:
+## Troubleshooting
 
-```text
-https://YOUR-VERCEL-DOMAIN.vercel.app/api/webhooks/razorpay
-```
-
-Use the same `RAZORPAY_WEBHOOK_SECRET` in Vercel env.
-
-## 6. After deploy
-
-- Open `https://YOUR-VERCEL-DOMAIN.vercel.app`
-- **Audit / exports:** `/audit` or `/exports`
-- Large ZIP exports may need **Vercel Pro** (longer function timeout); `vercel.json` requests 60s for `/api/exports/*`.
-
-## 7. Security note (before public launch)
-
-The app still uses a **development-style actor** (first seeded `ADMIN_TRUSTEE`) rather than full login. Do not expose the production URL publicly until you add authentication (NextAuth, Clerk, etc.) and lock export APIs.
-
-## Local vs Vercel
-
-| | Local | Vercel |
-|---|--------|--------|
-| `STORAGE_DRIVER` | `local` | `s3` |
-| Postgres | Homebrew / Postgres.app | Neon / Vercel Postgres |
-| `npm run dev` | Yes | N/A (use Preview deployments) |
+| Symptom | Fix |
+|---------|-----|
+| Build fails on `prisma db push` | Set **`DIRECT_URL`** to Neon’s non-pooled URL |
+| `/setup` says invalid secret | `SETUP_SECRET` in Vercel must match exactly; redeploy after changing env |
+| Accounting page DB error | Complete `/setup` seed; check Neon project is running |
+| Upload fails | Set `STORAGE_DRIVER=s3` and S3/R2 credentials |
