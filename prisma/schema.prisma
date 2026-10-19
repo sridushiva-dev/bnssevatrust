@@ -1,5 +1,4 @@
-// prisma/schema.prisma
-// Enterprise RDBMS Schema for Bhagavan Naama Sathsangam Seva Trust
+// prisma/schema.prisma — Enterprise RDBMS Schema (PRD §5)
 
 generator client {
   provider = "prisma-client-js"
@@ -11,9 +10,7 @@ datasource db {
 }
 
 enum Role {
-  MANAGING_TRUSTEE
-  AUTHORISED_SIGNATORY_TRUSTEE
-  TRUSTEE
+  ADMIN_TRUSTEE
   CLERK_OPERATOR
   AUDITOR_CA
 }
@@ -42,25 +39,10 @@ enum TransactionStatus {
 }
 
 enum AccountType {
-  LIABILITY_FUND // Auto-assigned codes: 1001 - 1999
-  ASSET          // Auto-assigned codes: 2001 - 2999
-  INCOME         // Auto-assigned codes: 3001 - 3999
-  EXPENSE        // Auto-assigned codes: 4001 - 4999
-}
-
-// Internal system tags so automated accounting rules still work even if the Admin Trustee renames any ledger
-enum SystemLedgerTag {
-  CORPUS_DEFAULT
-  GENERAL_SURPLUS
-  TDS_PAYABLE
-  BANK_PRIMARY
-  BANK_CORPUS
-  FD_SEC_11_5
-  RAZORPAY_CLEARING
-  CASH_MAIN
-  PETTY_CASH
-  INCOME_GENERAL_DEFAULT
-  EXPENSE_GATEWAY_FEES
+  ASSET
+  LIABILITY_FUND
+  INCOME
+  EXPENSE
 }
 
 enum VoucherType {
@@ -77,79 +59,33 @@ enum ExpenseScale {
 
 enum SpecifiedPersonType {
   NONE
-  FOUNDER_MANAGING_TRUSTEE
   TRUSTEE
+  SETTLOR
   SUBSTANTIAL_CONTRIBUTOR
   RELATIVE_OF_TRUSTEE
 }
 
-model TrustSettings {
-  id                       String   @id @default("default")
-  trustName                String   @default("BHAGAVAN NAAMA SATHSANGAM SEVA TRUST")
-  tagline                  String   @default("SINCE 1990")
-  deedRegistrationNo       String   @default("R/Podumbu/Book-4/71/2026")
-  deedRegistrationDate     String   @default("2026-09-30")
-  subRegistrarOffice       String   @default("Podumbu, Madurai North")
-  registeredOfficeAddress  String   @default("No. 4/355, First Floor, Rajaji Street, EB Colony, Anaiyur, Madurai, Tamil Nadu - 625017")
-  panNumber                String?
-  sec12abRegistrationNo    String?
-  sec80gRegistrationNo     String?
-  authorisedSignatory1Name String   @default("G. Ramakrishnan")
-  authorisedSignatory2Name String   @default("S. Sivarama Krishnan")
-  logoUrl                  String   @default("/assets/trust-logo.png")
-  updatedAt                DateTime @updatedAt
-}
-
 model User {
-  id          String     @id @default(cuid())
-  fullName    String
-  designation String     // e.g., "Founder & Managing Trustee", "Trustee & Authorised Signatory"
-  email       String?    @unique
-  phone       String     @unique
-  panNumber   String?
-  address     String?
-  role        Role       @default(TRUSTEE)
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  auditLogs   AuditLog[]
-}
-
-model LedgerAccount {
-  id                    String           @id @default(cuid())
-  code                  String           @unique // Auto-assigned 4-digit code: 1xxx, 2xxx, 3xxx, 4xxx
-  name                  String           @unique // User-editable custom ledger name
-  description           String?
-  accountType           AccountType
-  tallyParentGroup      String           // e.g., "Capital Account", "Bank Accounts", "Direct Incomes", "Direct Expenses"
-  systemTag             SystemLedgerTag? @unique // Protects system routing even if user renames the ledger
-  isCorpusFund          Boolean          @default(false)
-  isSec11_5ApprovedMode Boolean          @default(false)
-  openingBalance        Decimal          @default(0) @db.Decimal(14, 2)
-  isActive              Boolean          @default(true)
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-
-  journalLines          JournalLine[]
-  donationsCredited     Donation[]       @relation("DonationTargetLedger")
-  donationsDeposited    Donation[]       @relation("DonationAssetLedger")
-  expensesDebited       Expense[]        @relation("ExpenseTargetLedger")
-  expensesPaidFrom      Expense[]        @relation("ExpenseAssetLedger")
-  budgetCategories      BudgetCategory[]
-
-  @@index([accountType, isActive])
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  phone     String?
+  role      Role       @default(ADMIN_TRUSTEE)
+  createdAt DateTime   @default(now())
+  auditLogs AuditLog[]
 }
 
 model Donor {
   id                  String              @id @default(cuid())
-  donorCode           String              @unique // e.g., DNR-2026-0001
+  donorCode           String              @unique
   fullName            String
   phone               String              @unique
   email               String?
-  panNumber           String?             // Validated: ^[A-Z]{5}[0-9]{4}[A-Z]{1}$
+  panNumber           String?
   addressLine1        String
   addressLine2        String?
   city                String
-  state               String              @default("Tamil Nadu")
+  state               String
   pinCode             String
   specifiedPersonType SpecifiedPersonType @default(NONE)
   lifetimeDonated     Decimal             @default(0) @db.Decimal(14, 2)
@@ -164,9 +100,8 @@ model Donor {
 
 model Donation {
   id                       String            @id @default(cuid())
-  receiptNumber            String            @unique // e.g., BNST-RCPT-2026-27-0001
-  financialYear            String            // e.g., "2026-27"
-  donationDate             DateTime          @default(now())
+  receiptNumber            String            @unique
+  financialYear            String
   donorId                  String
   donor                    Donor             @relation(fields: [donorId], references: [id])
   amount                   Decimal           @db.Decimal(14, 2)
@@ -174,41 +109,31 @@ model Donation {
   paymentMethod            PaymentMethod
   status                   TransactionStatus @default(PENDING_PAYMENT)
 
-  // Dynamic Ledger Links
-  incomeOrFundLedgerId     String
-  incomeOrFundLedger       LedgerAccount     @relation("DonationTargetLedger", fields: [incomeOrFundLedgerId], references: [id])
-  assetLedgerId            String?           // Cash, Razorpay Clearing, or Bank Ledger
-  assetLedger              LedgerAccount?    @relation("DonationAssetLedger", fields: [assetLedgerId], references: [id])
-
-  // Corpus Compliance (Sec 11(1)(d))
   corpusDirectionConfirmed Boolean           @default(false)
   corpusDirectionNote      String?
 
-  // Razorpay Fields
-  razorpayOrderId          String?           @unique
-  razorpayPaymentId        String?           @unique
-  razorpayQrId             String?
-  razorpaySignature        String?
-  subscriptionId           String?
-  utrNumber                String?
+  razorpayOrderId    String? @unique
+  razorpayPaymentId  String? @unique
+  razorpayQrId       String?
+  razorpaySignature  String?
+  subscriptionId     String?
+  utrNumber          String?
 
-  // Cheque Fields
-  chequeNumber             String?
-  chequeDate               DateTime?
-  chequeBankName           String?
-  chequeBranchIfsc         String?
-  chequeClearedDate        DateTime?
-  bounceReason             String?
+  chequeNumber      String?
+  chequeDate        DateTime?
+  chequeBankName    String?
+  chequeBranchIfsc  String?
+  chequeClearedDate DateTime?
+  bounceReason      String?
 
-  // Accounting & Receipt Delivery
-  journalEntryId           String?           @unique
-  journalEntry             JournalEntry?     @relation(fields: [journalEntryId], references: [id])
-  receiptPdfUrl            String?
-  donorNotifiedAt          DateTime?
-  attachments              Attachment[]
-  createdById              String
-  createdAt                DateTime          @default(now())
-  updatedAt                DateTime          @updatedAt
+  journalEntryId  String?       @unique
+  journalEntry    JournalEntry? @relation(fields: [journalEntryId], references: [id])
+  receiptPdfUrl   String?
+  donorNotifiedAt DateTime?
+  attachments     Attachment[]
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([financialYear, status])
   @@index([donorId])
@@ -220,29 +145,26 @@ model Subscription {
   donorId                String
   donor                  Donor    @relation(fields: [donorId], references: [id])
   planAmount             Decimal  @db.Decimal(14, 2)
-  frequency              String   // MONTHLY, QUARTERLY, YEARLY
+  frequency              String
   fundType               FundType @default(GENERAL_VOLUNTARY)
-  incomeOrFundLedgerId   String
-  status                 String   // CREATED, ACTIVE, HALTED, COMPLETED, CANCELLED
+  status                 String
   shortUrl               String?
   createdAt              DateTime @default(now())
 }
 
 model BudgetCategory {
-  id               String             @id @default(cuid())
-  code             String             @unique // Auto-assigned: BDG-01, BDG-02...
-  name             String             @unique // User-editable custom category name
-  deedObjectiveRef String?            // e.g., "Clause 1.2 - Seetha-Radha Kalyana Mahotsavam"
-  defaultLedgerId  String?
-  defaultLedger    LedgerAccount?     @relation(fields: [defaultLedgerId], references: [id])
-  isActive         Boolean            @default(true)
-  allocations      BudgetAllocation[]
-  expenses         Expense[]
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  ledgerId    String
+  ledger      LedgerAccount      @relation(fields: [ledgerId], references: [id])
+  allocations BudgetAllocation[]
+  expenses    Expense[]
 }
 
 model BudgetAllocation {
   id                String         @id @default(cuid())
-  financialYear     String         // e.g., "2026-27"
+  financialYear     String
   budgetCategoryId  String
   budgetCategory    BudgetCategory @relation(fields: [budgetCategoryId], references: [id])
   allocatedAmount   Decimal        @db.Decimal(14, 2)
@@ -252,51 +174,53 @@ model BudgetAllocation {
 }
 
 model Expense {
-  id                  String            @id @default(cuid())
-  voucherNumber       String            @unique // e.g., BNST-PAY-2026-27-0001
-  financialYear       String
-  expenseDate         DateTime
-  scale               ExpenseScale      @default(MAJOR)
-  vendorName          String
-  vendorPan           String?
-  description         String
-  grossAmount         Decimal           @db.Decimal(14, 2)
-  tdsAmount           Decimal           @default(0) @db.Decimal(14, 2)
-  netPaidAmount       Decimal           @db.Decimal(14, 2)
-  paymentMethod       PaymentMethod     // CASH, UPI_QR (UPI/Bank), CHEQUE
-  status              TransactionStatus @default(REALIZED)
+  id               String            @id @default(cuid())
+  voucherNumber    String            @unique
+  financialYear    String
+  expenseDate      DateTime
+  scale            ExpenseScale      @default(MAJOR)
+  vendorName       String
+  vendorPan        String?
+  description      String
+  amount           Decimal           @db.Decimal(14, 2)
+  tdsAmount        Decimal           @default(0) @db.Decimal(14, 2)
+  netPaidAmount    Decimal           @db.Decimal(14, 2)
+  paymentMethod    PaymentMethod
+  status           TransactionStatus @default(REALIZED)
 
-  // Dynamic Ledger Links
-  expenseLedgerId     String
-  expenseLedger       LedgerAccount     @relation("ExpenseTargetLedger", fields: [expenseLedgerId], references: [id])
-  paidFromLedgerId    String            // Cash-in-Hand, Petty Cash, or Bank Ledger
-  paidFromLedger      LedgerAccount     @relation("ExpenseAssetLedger", fields: [paidFromLedgerId], references: [id])
+  utrOrRefNumber   String?
+  chequeNumber     String?
+  chequeDate       DateTime?
+  paidFromLedgerId String
 
-  // Payment Instrument Details
-  utrOrRefNumber      String?
-  chequeNumber        String?
-  chequeDate          DateTime?
-  isTrusteeReimbursement Boolean        @default(false)
-  reimbursedTrusteeId String?
-
-  // Tax Compliance Flags
-  isDisallowedSec11   Boolean           @default(false) // True if Cash > 10,000/day to same vendor
+  isDisallowedSec11   Boolean @default(false)
   disallowanceReason  String?
-  isCapitalAsset      Boolean           @default(false)
-  isRelatedPartySec13 Boolean           @default(false)
+  isCapitalAsset      Boolean @default(false)
+  isRelatedPartySec13 Boolean @default(false)
 
-  // Budget & Accounting Links
-  budgetCategoryId    String
-  budgetCategory      BudgetCategory    @relation(fields: [budgetCategoryId], references: [id])
-  journalEntryId      String?           @unique
-  journalEntry        JournalEntry?     @relation(fields: [journalEntryId], references: [id])
-  attachments         Attachment[]
-  createdById         String
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  budgetCategoryId String
+  budgetCategory   BudgetCategory @relation(fields: [budgetCategoryId], references: [id])
+  journalEntryId   String?        @unique
+  journalEntry     JournalEntry?  @relation(fields: [journalEntryId], references: [id])
+  attachments      Attachment[]
+  createdById      String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([financialYear, budgetCategoryId])
   @@index([expenseDate, vendorName])
+}
+
+model LedgerAccount {
+  id               String           @id @default(cuid())
+  code             String           @unique
+  name             String           @unique
+  tallyParentGroup String
+  accountType      AccountType
+  isSec11_5Mode    Boolean          @default(false)
+  openingBalance   Decimal          @default(0) @db.Decimal(14, 2)
+  journalLines     JournalLine[]
+  budgetCategories BudgetCategory[]
 }
 
 model JournalEntry {
@@ -332,7 +256,7 @@ model Attachment {
   fileName   String
   mimeType   String
   fileSize   Int
-  storageKey String    // S3 Object Key or local path
+  storageKey String
   fileUrl    String
   donationId String?
   donation   Donation? @relation(fields: [donationId], references: [id])
@@ -346,9 +270,18 @@ model AuditLog {
   id         String   @id @default(cuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id])
-  action     String   // e.g., "CREATE_LEDGER", "RENAME_LEDGER", "CREATE_DONATION", "CLEAR_CHEQUE"
+  action     String
   entityType String
   entityId   String
   metadata   Json?
   createdAt  DateTime @default(now())
+}
+
+model VoucherSequence {
+  id            String      @id @default(cuid())
+  financialYear String
+  voucherType   VoucherType
+  lastSequence  Int         @default(0)
+
+  @@unique([financialYear, voucherType])
 }

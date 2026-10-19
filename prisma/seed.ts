@@ -1,339 +1,347 @@
-// prisma/seed.ts
-// Pre-seeds Bhagavan Naama Sathsangam Seva Trust governance, auto-coded starter ledgers,
-// initial Rs. 1,000/- Founder Corpus (Clause 5.2), and Trust Deed Budget Categories.
-
-import { PrismaClient, AccountType, Role, SystemLedgerTag, SpecifiedPersonType, FundType, PaymentMethod, TransactionStatus, VoucherType } from '@prisma/client';
+import {
+  AccountType,
+  PrismaClient,
+  Role,
+} from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 
 const prisma = new PrismaClient();
 
-/**
- * Helper to auto-assign the next 4-digit Ledger Code based on AccountType:
- * LIABILITY_FUND: 1001 - 1999
- * ASSET:          2001 - 2999
- * INCOME:         3001 - 3999
- * EXPENSE:        4001 - 4999
- */
-export async function generateNextLedgerCode(accountType: AccountType): Promise<string> {
-  const prefixMap: Record<AccountType, number> = {
-    LIABILITY_FUND: 1000,
-    ASSET: 2000,
-    INCOME: 3000,
-    EXPENSE: 4000,
-  };
-  const base = prefixMap[accountType];
-  const minCode = String(base + 1);
-  const maxCode = String(base + 999);
+/** Canonical 24 ledgers from ACCOUNTING_AND_TAX_RULES.md §2 */
+const CANONICAL_LEDGERS: Array<{
+  code: string;
+  name: string;
+  tallyParentGroup: string;
+  accountType: AccountType;
+  isSec11_5Mode: boolean;
+}> = [
+  {
+    code: "1001",
+    name: "Corpus Fund - Sec 11(1)(d)",
+    tallyParentGroup: "Capital Account",
+    accountType: AccountType.LIABILITY_FUND,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "1002",
+    name: "General Trust Fund / Surplus",
+    tallyParentGroup: "Capital Account",
+    accountType: AccountType.LIABILITY_FUND,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "1003",
+    name: "Designated Fund - Annadhanam",
+    tallyParentGroup: "Current Liabilities",
+    accountType: AccountType.LIABILITY_FUND,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "1004",
+    name: "Designated Fund - Temple Renovation",
+    tallyParentGroup: "Current Liabilities",
+    accountType: AccountType.LIABILITY_FUND,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "1005",
+    name: "TDS Payable",
+    tallyParentGroup: "Duties & Taxes",
+    accountType: AccountType.LIABILITY_FUND,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "1006",
+    name: "Uncleared Cheques in Hand (Contra)",
+    tallyParentGroup: "Current Liabilities",
+    accountType: AccountType.LIABILITY_FUND,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "2001",
+    name: "Primary Trust Bank Account (Savings/Current)",
+    tallyParentGroup: "Bank Accounts",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: true,
+  },
+  {
+    code: "2002",
+    name: "Corpus Dedicated Bank Account",
+    tallyParentGroup: "Bank Accounts",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: true,
+  },
+  {
+    code: "2003",
+    name: "Scheduled Bank Fixed Deposits - Sec 11(5)",
+    tallyParentGroup: "Deposits (Asset)",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: true,
+  },
+  {
+    code: "2004",
+    name: "Razorpay Settlement Clearing Account",
+    tallyParentGroup: "Current Assets",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "2005",
+    name: "Cash-in-Hand (Main Chest)",
+    tallyParentGroup: "Cash-in-Hand",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "2006",
+    name: "Petty Cash Imprest",
+    tallyParentGroup: "Cash-in-Hand",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "2007",
+    name: "Temple Building & Fixed Assets",
+    tallyParentGroup: "Fixed Assets",
+    accountType: AccountType.ASSET,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "3001",
+    name: "Voluntary Contributions - General",
+    tallyParentGroup: "Direct Incomes",
+    accountType: AccountType.INCOME,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "3002",
+    name: "Specific Pooja & Seva Receipts",
+    tallyParentGroup: "Direct Incomes",
+    accountType: AccountType.INCOME,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "3003",
+    name: "Annadhanam Contributions",
+    tallyParentGroup: "Direct Incomes",
+    accountType: AccountType.INCOME,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "3004",
+    name: "Subscription / Nithya Kainkaryam Receipts",
+    tallyParentGroup: "Direct Incomes",
+    accountType: AccountType.INCOME,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "3005",
+    name: "Bank & FD Interest Income",
+    tallyParentGroup: "Indirect Incomes",
+    accountType: AccountType.INCOME,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4001",
+    name: "Nithya Pooja & Religious Samagri Expenses",
+    tallyParentGroup: "Direct Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4002",
+    name: "Annadhanam & Prasadam Distribution",
+    tallyParentGroup: "Direct Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4003",
+    name: "Utsavam & Festival Expenses",
+    tallyParentGroup: "Direct Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4004",
+    name: "Archakar & Temple Staff Sambhavana",
+    tallyParentGroup: "Direct Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4005",
+    name: "Temple Repair, Maintenance & Utilities",
+    tallyParentGroup: "Indirect Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4006",
+    name: "Audit, Legal & Accounting Fees",
+    tallyParentGroup: "Indirect Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4007",
+    name: "Razorpay & Bank Transaction Charges",
+    tallyParentGroup: "Indirect Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+  {
+    code: "4008",
+    name: "Petty Office & Miscellaneous Expenses",
+    tallyParentGroup: "Indirect Expenses",
+    accountType: AccountType.EXPENSE,
+    isSec11_5Mode: false,
+  },
+];
 
-  const latestLedger = await prisma.ledgerAccount.findFirst({
-    where: {
-      accountType,
-      code: { gte: minCode, lte: maxCode },
-    },
-    orderBy: { code: 'desc' },
-  });
+const FY_2026_27 = "2026-27";
 
-  if (!latestLedger) {
-    return String(base + 1);
-  }
-  return String( parseInt(latestLedger.code, 10) + 1 );
-}
+/** Default FY 2026-27 budget heads mapped to expense ledgers (PRD Module 5 examples) */
+const DEFAULT_BUDGETS: Array<{
+  name: string;
+  description: string;
+  ledgerCode: string;
+  allocatedAmount: string;
+}> = [
+  {
+    name: "Nithya Pooja & Samagri",
+    description: "Daily pooja, samagri, and religious materials",
+    ledgerCode: "4001",
+    allocatedAmount: "200000.00",
+  },
+  {
+    name: "Annadhanam",
+    description: "Annadhanam and prasadam distribution",
+    ledgerCode: "4002",
+    allocatedAmount: "500000.00",
+  },
+  {
+    name: "Brahmotsavam & Festival",
+    description: "Utsavam and festival expenses",
+    ledgerCode: "4003",
+    allocatedAmount: "300000.00",
+  },
+  {
+    name: "Archakar & Staff Sambhavana",
+    description: "Priest and temple staff honorarium",
+    ledgerCode: "4004",
+    allocatedAmount: "150000.00",
+  },
+  {
+    name: "Temple Maintenance",
+    description: "Repair, maintenance, and utilities",
+    ledgerCode: "4005",
+    allocatedAmount: "150000.00",
+  },
+  {
+    name: "Audit & Legal",
+    description: "Statutory audit and legal compliance",
+    ledgerCode: "4006",
+    allocatedAmount: "50000.00",
+  },
+  {
+    name: "Gateway & Bank Charges",
+    description: "Razorpay and bank transaction fees",
+    ledgerCode: "4007",
+    allocatedAmount: "25000.00",
+  },
+  {
+    name: "Petty Office Expenses",
+    description: "Office and miscellaneous petty cash",
+    ledgerCode: "4008",
+    allocatedAmount: "25000.00",
+  },
+];
 
 async function main() {
-  console.log('Seeding Bhagavan Naama Sathsangam Seva Trust Portal...');
+  console.log("Seeding canonical chart of accounts and FY 2026-27 budgets...");
 
-  // 1. Trust Settings (From Registered Deed R/Podumbu/Book-4/71/2026)
-  await prisma.trustSettings.upsert({
-    where: { id: 'default' },
+  const ledgerByCode: Record<string, string> = {};
+
+  for (const ledger of CANONICAL_LEDGERS) {
+    const row = await prisma.ledgerAccount.upsert({
+      where: { code: ledger.code },
+      update: {
+        name: ledger.name,
+        tallyParentGroup: ledger.tallyParentGroup,
+        accountType: ledger.accountType,
+        isSec11_5Mode: ledger.isSec11_5Mode,
+      },
+      create: {
+        code: ledger.code,
+        name: ledger.name,
+        tallyParentGroup: ledger.tallyParentGroup,
+        accountType: ledger.accountType,
+        isSec11_5Mode: ledger.isSec11_5Mode,
+        openingBalance: new Decimal(0),
+      },
+    });
+    ledgerByCode[ledger.code] = row.id;
+  }
+
+  await prisma.user.upsert({
+    where: { email: "admin.trustee@bnst.local" },
     update: {},
     create: {
-      id: 'default',
-      trustName: 'BHAGAVAN NAAMA SATHSANGAM SEVA TRUST',
-      tagline: 'SINCE 1990',
-      deedRegistrationNo: 'R/Podumbu/Book-4/71/2026',
-      deedRegistrationDate: '2026-09-30',
-      subRegistrarOffice: 'Podumbu, Madurai North',
-      registeredOfficeAddress: 'No. 4/355, First Floor, Rajaji Street, EB Colony, Anaiyur, Madurai, Tamil Nadu - 625017',
-      authorisedSignatory1Name: 'G. Ramakrishnan',
-      authorisedSignatory2Name: 'S. Sivarama Krishnan',
-      logoUrl: '/assets/trust-logo.png',
+      name: "Admin Trustee",
+      email: "admin.trustee@bnst.local",
+      phone: "+919000000001",
+      role: Role.ADMIN_TRUSTEE,
     },
   });
 
-  // 2. First Board of Trustees (From Trust Deed Pages 1, 2, 6, 8)
-  const trustees = [
-    {
-      fullName: 'R. Meenakshi Sundaram',
-      designation: 'Founder, Author & Managing Trustee',
-      phone: '9944071183',
-      panNumber: 'DMMPM1553F',
-      address: 'No. 4/355, Ground Floor, Rajaji Street, EB Colony, Anaiyur, Madurai, Tamil Nadu - 625017',
-      role: Role.MANAGING_TRUSTEE,
-      specifiedType: SpecifiedPersonType.FOUNDER_MANAGING_TRUSTEE,
-      city: 'Madurai',
-      pinCode: '625017',
-    },
-    {
-      fullName: 'Ramakrishnan Gopalakrishnan',
-      designation: 'Trustee & Joint Authorised Signatory',
-      phone: '9003565966',
-      panNumber: 'BYXPR8106E',
-      address: 'Flat No. 1A, A Block, 1st Floor, Agraharam, Singanallur, Paaru Apartment, East Street, Coimbatore, Tamil Nadu - 641005',
-      role: Role.AUTHORISED_SIGNATORY_TRUSTEE,
-      specifiedType: SpecifiedPersonType.TRUSTEE,
-      city: 'Coimbatore',
-      pinCode: '641005',
-    },
-    {
-      fullName: 'Sivaramakrishnan Sridhar',
-      designation: 'Trustee & Joint Authorised Signatory',
-      phone: '8148666297',
-      panNumber: 'FUYPS9172L',
-      address: '7/7, North Street, Sathy Main Road, Kurumbapalayam, Coimbatore, Tamil Nadu - 641107',
-      role: Role.AUTHORISED_SIGNATORY_TRUSTEE,
-      specifiedType: SpecifiedPersonType.TRUSTEE,
-      city: 'Coimbatore',
-      pinCode: '641107',
-    },
-    {
-      fullName: 'Ganesh Sekar',
-      designation: 'Trustee',
-      phone: '7358422299',
-      panNumber: 'ITYPS3434M',
-      address: 'Villa 34, Aadrudhra Enclave, Athipalayam Salai, Saravanampatti, Coimbatore, Tamil Nadu - 641035',
-      role: Role.TRUSTEE,
-      specifiedType: SpecifiedPersonType.TRUSTEE,
-      city: 'Coimbatore',
-      pinCode: '641035',
-    },
-    {
-      fullName: 'Shyam Sundar Gopalakrishnan',
-      designation: 'Trustee',
-      phone: '8870219438',
-      panNumber: 'NDJPS1470K',
-      address: 'Flat No. 1A, Paaru Apartments, East Street, Singanallur, Agraharam, Coimbatore, Tamil Nadu - 641005',
-      role: Role.TRUSTEE,
-      specifiedType: SpecifiedPersonType.TRUSTEE,
-      city: 'Coimbatore',
-      pinCode: '641005',
-    },
-    {
-      fullName: 'Meera Shankar',
-      designation: 'Trustee',
-      phone: '8925200127',
-      panNumber: 'CEZPM7283N',
-      address: 'No. 4/355, Ground Floor, Rajaji Street, EB Colony, Anaiyur, Madurai, Tamil Nadu - 625017',
-      role: Role.TRUSTEE,
-      specifiedType: SpecifiedPersonType.TRUSTEE,
-      city: 'Madurai',
-      pinCode: '625017',
-    },
-    {
-      fullName: 'Suriyanarayanan K',
-      designation: 'Trustee',
-      phone: '9894740573',
-      panNumber: 'MTRPK9520M',
-      address: 'No. 30B/1, Janaatha Nagar West, Periyar Street, Sivanandapuram, Coimbatore, Tamil Nadu - 641035',
-      role: Role.TRUSTEE,
-      specifiedType: SpecifiedPersonType.TRUSTEE,
-      city: 'Coimbatore',
-      pinCode: '641035',
-    },
-  ];
-
-  let founderUserId = '';
-  let founderDonorId = '';
-
-  for (let i = 0; i < trustees.length; i++) {
-    const t = trustees[i];
-    const user = await prisma.user.upsert({
-      where: { phone: t.phone },
-      update: {},
-      create: {
-        fullName: t.fullName,
-        designation: t.designation,
-        phone: t.phone,
-        panNumber: t.panNumber,
-        address: t.address,
-        role: t.role,
-      },
-    });
-
-    const donor = await prisma.donor.upsert({
-      where: { phone: t.phone },
-      update: {},
-      create: {
-        donorCode: `DNR-2026-000${i + 1}`,
-        fullName: t.fullName,
-        phone: t.phone,
-        panNumber: t.panNumber,
-        addressLine1: t.address,
-        city: t.city,
-        state: 'Tamil Nadu',
-        pinCode: t.pinCode,
-        specifiedPersonType: t.specifiedType,
-      },
-    });
-
-    if (i === 0) {
-      founderUserId = user.id;
-      founderDonorId = donor.id;
+  for (const budget of DEFAULT_BUDGETS) {
+    const ledgerId = ledgerByCode[budget.ledgerCode];
+    if (!ledgerId) {
+      throw new Error(`Missing ledger for budget: ${budget.name}`);
     }
-  }
 
-  // 3. Starter Ledgers (All Renameable & Extensible in UI with Auto-Assigned Codes)
-  const starterLedgers: Array<{
-    name: string;
-    accountType: AccountType;
-    tallyParentGroup: string;
-    systemTag?: SystemLedgerTag;
-    isCorpusFund?: boolean;
-    isSec11_5ApprovedMode?: boolean;
-  }> = [
-    // 1xxx - Funds & Liabilities
-    { name: 'Trust Corpus Fund', accountType: AccountType.LIABILITY_FUND, tallyParentGroup: 'Capital Account', systemTag: SystemLedgerTag.CORPUS_DEFAULT, isCorpusFund: true },
-    { name: 'General Trust Fund & Surplus', accountType: AccountType.LIABILITY_FUND, tallyParentGroup: 'Capital Account', systemTag: SystemLedgerTag.GENERAL_SURPLUS },
-    { name: 'Seetha-Radha Kalyana Mahotsavam Fund', accountType: AccountType.LIABILITY_FUND, tallyParentGroup: 'Current Liabilities' },
-    { name: 'TDS Payable', accountType: AccountType.LIABILITY_FUND, tallyParentGroup: 'Duties & Taxes', systemTag: SystemLedgerTag.TDS_PAYABLE },
-
-    // 2xxx - Assets, Bank & Cash
-    { name: 'Primary Trust Bank Account', accountType: AccountType.ASSET, tallyParentGroup: 'Bank Accounts', systemTag: SystemLedgerTag.BANK_PRIMARY, isSec11_5ApprovedMode: true },
-    { name: 'Corpus Bank / FD Account (Sec 11(5))', accountType: AccountType.ASSET, tallyParentGroup: 'Deposits (Asset)', systemTag: SystemLedgerTag.FD_SEC_11_5, isSec11_5ApprovedMode: true },
-    { name: 'Razorpay Settlement Clearing A/c', accountType: AccountType.ASSET, tallyParentGroup: 'Current Assets', systemTag: SystemLedgerTag.RAZORPAY_CLEARING },
-    { name: 'Cash on Hand', accountType: AccountType.ASSET, tallyParentGroup: 'Cash-in-Hand', systemTag: SystemLedgerTag.CASH_MAIN },
-    { name: 'Petty Cash', accountType: AccountType.ASSET, tallyParentGroup: 'Cash-in-Hand', systemTag: SystemLedgerTag.PETTY_CASH },
-
-    // 3xxx - Incomes (Aligned with Trust Deed Clauses 1.1 - 1.20)
-    { name: 'General Voluntary Donations', accountType: AccountType.INCOME, tallyParentGroup: 'Direct Incomes', systemTag: SystemLedgerTag.INCOME_GENERAL_DEFAULT },
-    { name: 'Seetha-Radha Kalyana Mahotsavam Contributions', accountType: AccountType.INCOME, tallyParentGroup: 'Direct Incomes' },
-    { name: 'Annadanam & Prasadam Donations', accountType: AccountType.INCOME, tallyParentGroup: 'Direct Incomes' },
-    { name: 'Bhajan, Satsang & Utsavam Sponsorships', accountType: AccountType.INCOME, tallyParentGroup: 'Direct Incomes' },
-    { name: 'Bank & FD Interest Income', accountType: AccountType.INCOME, tallyParentGroup: 'Indirect Incomes' },
-
-    // 4xxx - Expenses (Aligned with Trust Deed Clauses 1.1 - 1.20)
-    { name: 'Seetha-Radha Kalyana Mahotsavam Expenses', accountType: AccountType.EXPENSE, tallyParentGroup: 'Direct Expenses' },
-    { name: 'Utsavam, Bhajan, Kirtan & Pooja Expenses', accountType: AccountType.EXPENSE, tallyParentGroup: 'Direct Expenses' },
-    { name: 'Annadanam & Devotee Prasadam Expenses', accountType: AccountType.EXPENSE, tallyParentGroup: 'Direct Expenses' },
-    { name: 'Pravachanam, Spiritual Books & Cultural Heritage', accountType: AccountType.EXPENSE, tallyParentGroup: 'Direct Expenses' },
-    { name: 'Student Educational Support & Medical Camp Aid', accountType: AccountType.EXPENSE, tallyParentGroup: 'Direct Expenses' },
-    { name: 'Rent, Utilities & Office Maintenance', accountType: AccountType.EXPENSE, tallyParentGroup: 'Indirect Expenses' },
-    { name: 'Audit, Legal & Statutory Filing Fees', accountType: AccountType.EXPENSE, tallyParentGroup: 'Indirect Expenses' },
-    { name: 'Payment Gateway & Bank Charges', accountType: AccountType.EXPENSE, tallyParentGroup: 'Indirect Expenses', systemTag: SystemLedgerTag.EXPENSE_GATEWAY_FEES },
-  ];
-
-  const ledgerByName: Record<string, string> = {};
-
-  for (const item of starterLedgers) {
-    const existing = await prisma.ledgerAccount.findUnique({ where: { name: item.name } });
-    if (!existing) {
-      const nextCode = await generateNextLedgerCode(item.accountType);
-      const created = await prisma.ledgerAccount.create({
+    const existingCategory = await prisma.budgetCategory.findFirst({
+      where: { name: budget.name },
+    });
+    const category =
+      existingCategory ??
+      (await prisma.budgetCategory.create({
         data: {
-          code: nextCode,
-          name: item.name,
-          accountType: item.accountType,
-          tallyParentGroup: item.tallyParentGroup,
-          systemTag: item.systemTag,
-          isCorpusFund: item.isCorpusFund ?? false,
-          isSec11_5ApprovedMode: item.isSec11_5ApprovedMode ?? false,
+          name: budget.name,
+          description: budget.description,
+          ledgerId,
         },
+      }));
+    if (existingCategory) {
+      await prisma.budgetCategory.update({
+        where: { id: existingCategory.id },
+        data: { description: budget.description, ledgerId },
       });
-      ledgerByName[item.name] = created.id;
-    } else {
-      ledgerByName[item.name] = existing.id;
     }
-  }
-
-  // 4. Record Initial Founder Corpus Contribution of Rs. 1,000/- (Clause 5.2 of Trust Deed, 30-09-2026)
-  const existingFounderReceipt = await prisma.donation.findUnique({
-    where: { receiptNumber: 'BNST-RCPT-2026-27-0001' },
-  });
-
-  if (!existingFounderReceipt && founderDonorId && founderUserId) {
-    const cashLedgerId = ledgerByName['Cash on Hand'];
-    const corpusLedgerId = ledgerByName['Trust Corpus Fund'];
-
-    const journal = await prisma.journalEntry.create({
-      data: {
-        voucherNumber: 'BNST-RCPT-2026-27-0001',
-        voucherType: VoucherType.RECEIPT,
-        financialYear: '2026-27',
-        entryDate: new Date('2026-09-30T10:00:00+05:30'),
-        narration: 'Initial Founder Corpus Contribution as per Clause 5.2 of Trust Deed R/Podumbu/Book-4/71/2026 by R. Meenakshi Sundaram',
-        createdById: founderUserId,
-        lines: {
-          create: [
-            { ledgerId: cashLedgerId, debit: 1000.00, credit: 0 },
-            { ledgerId: corpusLedgerId, debit: 0, credit: 1000.00 },
-          ],
-        },
-      },
-    });
-
-    await prisma.donation.create({
-      data: {
-        receiptNumber: 'BNST-RCPT-2026-27-0001',
-        financialYear: '2026-27',
-        donationDate: new Date('2026-09-30T10:00:00+05:30'),
-        donorId: founderDonorId,
-        amount: 1000.00,
-        fundType: FundType.CORPUS_11_1_D,
-        paymentMethod: PaymentMethod.CASH,
-        status: TransactionStatus.REALIZED,
-        incomeOrFundLedgerId: corpusLedgerId,
-        assetLedgerId: cashLedgerId,
-        corpusDirectionConfirmed: true,
-        corpusDirectionNote: 'Clause 2.1 & 5.2 of Registered Trust Deed R/Podumbu/Book-4/71/2026 dated 30-09-2026',
-        journalEntryId: journal.id,
-        createdById: founderUserId,
-      },
-    });
-
-    await prisma.donor.update({
-      where: { id: founderDonorId },
-      data: { lifetimeDonated: 1000.00 },
-    });
-  }
-
-  // 5. Starter Budget Categories (Mapped to Trust Deed Objectives)
-  const starterBudgets = [
-    { code: 'BDG-01', name: 'Seetha-Radha Kalyana Mahotsavam', deedObjectiveRef: 'Clause 1.2 & 1.16', ledgerName: 'Seetha-Radha Kalyana Mahotsavam Expenses', amount: 300000 },
-    { code: 'BDG-02', name: 'Utsavams, Bhajans, Kirtans & Daily Pooja', deedObjectiveRef: 'Clause 1.1, 1.3 & 1.8', ledgerName: 'Utsavam, Bhajan, Kirtan & Pooja Expenses', amount: 150000 },
-    { code: 'BDG-03', name: 'Annadanam & Devotee Prasadam', deedObjectiveRef: 'Clause 1.12 & 1.13', ledgerName: 'Annadanam & Devotee Prasadam Expenses', amount: 250000 },
-    { code: 'BDG-04', name: 'Vedic Literature, Spiritual Publications & Youth Programs', deedObjectiveRef: 'Clause 1.9, 1.11 & 1.15', ledgerName: 'Pravachanam, Spiritual Books & Cultural Heritage', amount: 75000 },
-    { code: 'BDG-05', name: 'Student Aid & Free Medical Camps', deedObjectiveRef: 'Clause 1.19 & 1.20', ledgerName: 'Student Educational Support & Medical Camp Aid', amount: 100000 },
-    { code: 'BDG-06', name: 'Trust Administration, Rent & Audit', deedObjectiveRef: 'Clause 6.21', ledgerName: 'Rent, Utilities & Office Maintenance', amount: 60000 },
-  ];
-
-  for (const b of starterBudgets) {
-    const cat = await prisma.budgetCategory.upsert({
-      where: { code: b.code },
-      update: {},
-      create: {
-        code: b.code,
-        name: b.name,
-        deedObjectiveRef: b.deedObjectiveRef,
-        defaultLedgerId: ledgerByName[b.ledgerName],
-      },
-    });
 
     await prisma.budgetAllocation.upsert({
       where: {
         financialYear_budgetCategoryId: {
-          financialYear: '2026-27',
-          budgetCategoryId: cat.id,
+          financialYear: FY_2026_27,
+          budgetCategoryId: category.id,
         },
       },
-      update: {},
+      update: {
+        allocatedAmount: new Decimal(budget.allocatedAmount),
+      },
       create: {
-        financialYear: '2026-27',
-        budgetCategoryId: cat.id,
-        allocatedAmount: b.amount,
+        financialYear: FY_2026_27,
+        budgetCategoryId: category.id,
+        allocatedAmount: new Decimal(budget.allocatedAmount),
         alertThresholdPct: 80,
       },
     });
   }
 
-  console.log('Seed completed successfully.');
+  console.log(
+    `Seed complete: ${CANONICAL_LEDGERS.length} ledgers, ${DEFAULT_BUDGETS.length} budget categories for ${FY_2026_27}.`,
+  );
 }
 
 main()
