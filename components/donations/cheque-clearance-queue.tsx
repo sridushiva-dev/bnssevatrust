@@ -19,6 +19,7 @@ export type UnclearedCheque = {
 };
 
 export function ChequeClearanceQueue({ items }: { items: UnclearedCheque[] }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
@@ -58,6 +59,7 @@ export function ChequeClearanceQueue({ items }: { items: UnclearedCheque[] }) {
                 startTransition(async () => {
                   const res = await clearChequeAction(item.id, el.value);
                   setMessage(res.success ? `Cleared ${item.receiptNumber}` : res.error ?? "Failed");
+                  if (res.success) router.refresh();
                 });
               }}
             >
@@ -73,6 +75,7 @@ export function ChequeClearanceQueue({ items }: { items: UnclearedCheque[] }) {
                 startTransition(async () => {
                   const res = await bounceChequeAction(item.id, reason);
                   setMessage(res.success ? "Marked bounced" : res.error ?? "Failed");
+                  if (res.success) router.refresh();
                 });
               }}
             >
