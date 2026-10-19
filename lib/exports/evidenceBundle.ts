@@ -148,18 +148,18 @@ export async function buildAuditPackZipBuffer(filter: ExportFilter): Promise<Buf
   for (const donation of donations) {
     const folder = `${monthFolder(donation.createdAt)}/Receipts`;
     if (donation.receiptPdfUrl) {
-      const disk = await resolvePublicFile(donation.receiptPdfUrl);
-      if (disk) {
-        archive.file(disk, { name: `${folder}/${donation.receiptNumber}.pdf` });
-      }
+      await appendEvidenceFile(
+        archive,
+        donation.receiptPdfUrl,
+        `${folder}/${donation.receiptNumber}.pdf`,
+      );
     }
     for (const att of donation.attachments) {
-      const disk = await resolvePublicFile(att.fileUrl);
-      if (disk) {
-        archive.file(disk, {
-          name: `${folder}/${donation.receiptNumber}_${att.fileName}`,
-        });
-      }
+      await appendEvidenceFile(
+        archive,
+        att.fileUrl,
+        `${folder}/${donation.receiptNumber}_${att.fileName}`,
+      );
     }
   }
 
